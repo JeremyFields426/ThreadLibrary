@@ -16,36 +16,91 @@ tcb     *ready = NULL;
 val_ret *val_rets = NULL;
 
 
-void push(tcb *thread)
+int sem_init(sem_t **sp, int sem_count)
+{
+	*sp = malloc(sizeof(sem_t));
+	(*sp)->count = sem_count;
+	(*sp)->q = NULL;
+}
+
+void sem_wait(sem_t *sp)
+{
+	// This function moves the current thread
+	// to the end of the semaphore's blocking
+	// queue and then switches to the first
+	// available thread in the ready queue.
+
+	sp->count--;
+	if (sp->count < 0)
+	{
+		tcb *tmp = running;
+		push(&(sp->q), running);
+		running = pull(&ready);
+		
+		swapcontext(tmp->thread_context, running->thread_context);
+	}
+}
+
+void sem_signal(sem_t *sp)
+
+	// This function takes the first thread in the
+	// semaphore's blocking queue and moves it to the
+	// end of the ready queue.
+
+	sp->count++;
+	push(&ready, pull(&(sp->q)));
+}
+
+void sem_destroy(sem_t **sp)
+{
+	tcb *step = (*sp)->q;
+
+	while (step != NULL)
+        {
+                tcb *tmp = step->next;
+                free(step->thread_context->uc_stack.ss_sp);
+                free(step->thread_context);
+                free(step);
+                step = tmp;
+        }
+
+	free(*sp);
+	*sp = NULL;
+}
+
+
+tcb *pull(tcb **head)
 {
 	// This function is used simply to put the thread at
-	// the end of the ready queue.
+        // the beginning of the given queue.
 
-	if (ready == NULL)
+        if (*head == NULL) { return NULL; }
+
+        tcb* tmp = *head;
+        *head = (*head)->next;
+        tmp->next = NULL;
+
+        return tmp;
+}
+
+void push(tcb **head, tcb *thread)
+{
+	// This function is used simply to put the thread at
+        // the end of the given queue.
+
+	if (thread == NULL) { return; }
+
+	if (*head == NULL)
 	{
-		ready = thread;
+		*head = thread;
 		return;
 	}
 
-	tcb *step = ready;
+	tcb *step = *head;
 
 	while (step->next != NULL) { step = step->next; }
 
 	step->next = thread;
-}
-
-tcb *pull()
-{
-	// This function is used simply to pu the thread at
-	// the beginning of the ready queue.
-
-	if (ready == NULL) { return NULL; }
-
-        struct tcb *tmp = ready;
-        ready = ready->next;
-        tmp->next = NULL;
-
-        return tmp;
 }
 
 void display(struct tcb *queue)
@@ -53,7 +108,7 @@ void display(struct tcb *queue)
 	// This is just a debug function used to print out
 	// all of the tcb structs in the linked list.
 
-        struct tcb *step = queue;
+        tcb *step = queue;
 
         while (step != NULL)
         {
@@ -86,8 +141,8 @@ void t_yield()
 	// from the ready queue, and swaps to the new running thread.
 
 	tcb *tmp = running;
-	push(running);
-	running = pull();
+	push(&ready, running);
+	running = pull(&ready);
 
   	swapcontext(tmp->thread_context, running->thread_context);
 }
@@ -125,7 +180,7 @@ int t_create(void (*fct)(int), int id, int pri)
 	thread->thread_context = uc;
 	thread->next = NULL;
 
-	push(thread);
+	push(&ready, thread);
 }
 
 void t_terminate()
@@ -138,7 +193,7 @@ void t_terminate()
 	free(running->thread_context);
 	free(running);
 
-	running = pull();
+	running = pull(&ready);
 	setcontext(running->thread_context);
 }
 

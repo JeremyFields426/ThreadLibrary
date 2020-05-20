@@ -4,6 +4,13 @@
 #include <valgrind/valgrind.h>
 
 
+typedef struct sem_t
+{
+	int count;
+	struct tcb *q;
+} sem_t;
+
+
 typedef struct tcb
 {
         int         thread_id;
@@ -24,7 +31,18 @@ typedef struct val_ret
 } val_ret;
 
 
-void push(tcb *thread);
+int sem_init(sem_t **sp, int sem_count);
+
+void sem_wait(sem_t *sp);
+
+void sem_signal(sem_t *sp);
+
+void sem_destroy(sem_t **sp);
+
+
+tcb *pull(tcb **head);
+
+void push(tcb **head, tcb *thread);
 
 void t_init();
 
